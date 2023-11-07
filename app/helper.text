@@ -1,0 +1,141 @@
+#client = pymongo.MongoClient("mongodb://localhost:27017/")
+
+# db = client['svg_data']
+
+# mycol = db["tokendb_1"]
+
+# class AuthenticateUser(APIView):#Working man
+#     @swagger_auto_schema(request_body=openapi.Schema(
+#         type=openapi.TYPE_OBJECT,
+#         properties={
+#         'email': openapi.Schema(type=openapi.TYPE_STRING, description='email'),
+#         'password': openapi.Schema(type=openapi.TYPE_STRING, description='password')
+#         }))
+#     def post(self, request, format=None):
+#         # import pdb;pdb.set_trace()
+#         data = json.loads(request.body)
+#         user = User.objects.filter(Q(email__iexact=data["email"])).first()
+#         if user is not None:
+#             encrypted_password = user.password
+#             decrypted_password = decrypt(bytes(encrypted_password, "utf-8"), SECRET_KEY.encode()).decode()
+#             x= decrypted_password
+#             if x == data["password"]:
+#                 token, created = Token.objects.get_or_create(user=user)
+#                 mycol.insert_one({
+#                          "user_id": str(user.id),
+#                          "token": token.key,
+#                          "created_at": datetime.datetime.now()
+#                          })
+#                 return JsonResponse({"status": "success", "msg": "user successfully authenticated", "token": token.key})
+#             else:
+#                 return JsonResponse({"status": "error", "msg": "incorrect password"})
+                
+#         else:
+            # return JsonResponse({"status": "error", "msg": "incorrect email"})
+
+
+        
+SECRET_KEY='1234567'
+class SignupView(APIView):
+    @swagger_auto_schema( 
+             operation_id='sign up', 
+             request_body=UserSerializer)
+    def post(self, request, format=None):
+        serializer = UserSerializer(data=request.data)
+        try:
+            if serializer.is_valid():
+                email = serializer.validated_data['email']
+                if User.objects.filter(email=email).exists():
+                    return JsonResponse({"message": "Email already exists"}, status=status.HTTP_400_BAD_REQUEST)
+                password = serializer.validated_data['password']
+                password_hash = make_password(password)
+                serializer.save(password=password_hash)
+                return JsonResponse({"message": "User created successfully"}, status=status.HTTP_201_CREATED)
+            return JsonResponse(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.exception("Exception Email already exists %s", e)
+            return JsonResponse({"message": "Unable to process your request right now."},
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+ USER_TYPES = [
+        ('User', 'User'),
+    ]
+    username =models.CharField(max_length=200,unique=True)
+    email =models.CharField(max_length=200,unique=True)
+    usertype = models.CharField(max_length=20,choices=USER_TYPES,default='User',editable=False)
+    loggedin_as = models.CharField(max_length=20,default='temporarily',editable=False)
+    USERNAME_FIELD ='username'
+
+# class LoginView(APIView):
+#     def post(self,request):
+
+#         data = request.data
+#         email = data.get('email',None)
+#         password = data.get('password',None)
+#         user=EmailBackend.authenticate(self, request, username=email, password=password)
+#         if user is not None:
+#             token_payload = {
+#                 'user_id': str(user._id),
+#                 'exp': datetime.utcnow() + timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRATION),
+#                 'iat': datetime.utcnow()
+#                 }
+#             access_token = jwt.encode(token_payload, JWT_SECRET_KEY, JWT_ALGORITHM)
+
+#             refresh_token_payload = {
+#                 'user_id': str(user._id),
+#                 'exp': datetime.utcnow() + timedelta(days=JWT_REFRESH_TOKEN_EXPIRATION),
+#                 'iat': datetime.utcnow()
+#                 }
+#             refresh_token = jwt.encode(refresh_token_payload, JWT_SECRET_KEY, JWT_ALGORITHM)
+
+#             # details = mycol3.find_one({"email":email})
+#             # usertype = details['usertype']
+#             # logedin = details['logged_in']
+
+#             return JsonResponse({
+#                     "status": "success",
+#                     "msg": "user successfully authenticated",
+#                     'access':access_token,
+#                     'refresh':refresh_token
+#                     # "usertype":usertype,
+#                     # "logedin":logedin
+                     
+#                 })
+#         else:
+#             return JsonResponse({"message":"invalid data"})
+
+
+class PostView(APIView):
+    # permission_classes = (IsAuthenticated, )
+    # @swagger_auto_schema(
+    #     operation_id='Post View',
+    #     request_body=PostSerializer)
+    def post(self,request):
+        serializer = PostSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return JsonResponse(serializer.data,status=status.HTTP_201_CREATED)
+        return JsonResponse(serializer.data,status=status.HTTP_400_BAD_REQUEST)
+
+class LogoutView(APIView): # logout function for normal user.
+    permission_classes = [CustomIsauthenticated]
+    def post(self,request):
+        user_id = request.user._id
+        auth_header = request.headers.get('Authorization')
+        a_token = auth_header.split()[1]
+        user_data = mytokens.find({})  # here we are getting the all token collection iformation
+        information=[]
+        for info in user_data:
+            if ((datetime.utcnow() - info['created_date']).days) >=1: # if token created date greater than (datetime seconds to datetime day) we are removing the token from collection
+                information.append(info['_id'])
+        mytokens.remove({"_id":{"$in": information }}) # here we are using the in operator checking the in list of objects if time is greather then (datetime seconds to datetime day)
+            
+        mytokens.update(
+                {"user_id": str(user_id),"access_token":a_token},
+                {
+                    "$set": {"active":False}
+                }
+            )
+        return Response('Logout successfully')
